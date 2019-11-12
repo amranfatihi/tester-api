@@ -1,0 +1,27 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<types:mule xmlns:types="http://www.mulesoft.org/schema/mule/types">
+  <types:catalog>
+    <types:type name="postRequest" format="json">
+      <types:shape format="weave" example="examples/postRequest.json"><![CDATA[%dw 2.0
+
+type postRequest = {|
+  contactId: Number {"typeId": "int"}, 
+  timeStamp: String, 
+  someData: String
+|} {"example": "{\"contactId\":12312311,\"timeStamp\":\"acascas3123213c\",\"someData\":\"1231231233123123213\"}"}
+
+]]></types:shape>
+    </types:type>
+  </types:catalog>
+  <types:enrichment select="#dbe402d4-c155-4602-baa8-4a4fa9ac5e0c"/>
+  <types:enrichment select="#6212068a-7403-4ba6-b91a-f728a2679fa6">
+    <types:processor-declaration>
+      <types:output-event>
+        <types:message>
+          <types:payload type="postRequest"/>
+        </types:message>
+      </types:output-event>
+    </types:processor-declaration>
+  </types:enrichment>
+  <types:enrichment select="#0c48921c-476c-4ffe-9c78-00cccfb1a431"/>
+</types:mule>

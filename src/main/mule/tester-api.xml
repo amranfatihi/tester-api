@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="5d0c6c85-7c9e-4372-8874-6bb4f51b438a" basePath="/api">
+		<http:request-connection protocol="HTTPS" host="localhost" port="8082" tlsContext="TLS_Context"/>
+	</http:request-config>
+	<tls:context name="TLS_Context" doc:name="TLS Context" doc:id="cfa1337e-e14c-4955-82ba-d62947b5e21e" >
+		<tls:trust-store insecure="true" password="welcome1" type="jks" path="myTrustStore.jks"/>
+	</tls:context>
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="fd1734b8-385e-450b-bb5f-f9557ce79e42" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<os:object-store name="Contact_Object_store" doc:name="Object store" doc:id="39ddc7d4-861b-48cd-8fc4-c07c2dcaf074" />
+	<os:object-store name="Object_store" doc:name="Object store" doc:id="21eac55b-06d9-4ff9-86cf-87403f758199" />
+	<flow name="tester-apiFlow" doc:id="196d085d-df51-4f48-9d33-87b9b10e1d79" initialState="stopped">
+		<scheduler doc:name="Scheduler" doc:id="286b7069-b0ca-4a27-bc4b-3c789ee1e353" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="10000"/>
+			</scheduling-strategy>
+		</scheduler>
+		<http:request method="GET" doc:name="Request" doc:id="919d6afc-be0b-42a0-96bc-03b9f9c6ed78" config-ref="HTTP_Request_configuration" path="/updatedContacts">
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"client_secret" : "3773a5f1-20d3-46ff-baa4-1378d020e31f",
+	"client_id" : "mulesoft-sync-user"
+}]]]></http:headers>
+		</http:request>
+	</flow>
+	<flow name="tester-apiFlow2" doc:id="76425aea-387b-457d-afe2-bc4d12c94ebf" >
+		<http:listener doc:name="Listener" doc:id="6212068a-7403-4ba6-b91a-f728a2679fa6" config-ref="HTTP_Listener_config" path="/cache" allowedMethods="POST"/>
+		<set-variable value="#[payload.contactId as String]" doc:name="contactId" doc:id="0e484c71-42e5-4207-acb7-5069ba87f8fa" variableName="contactId" />
+		<ee:transform doc:name="Transform Message" doc:id="dbe402d4-c155-4602-baa8-4a4fa9ac5e0c">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="hashedData"><![CDATA[%dw 2.0
+import dw::Crypto
+output application/json
+---
+Crypto::hashWith(write(payload - "timeStamp", "application/json"),"MD5")]]></ee:set-variable>
+				<ee:set-variable variableName="oriPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<os:retrieve doc:name="Retrieve" doc:id="dbe1f3db-c6f1-4705-84d3-09c2d5496e32" key="#[vars.contactId]" objectStore="Contact_Object_store" />
+		<logger level="INFO" doc:name="Logger" doc:id="c9a3a890-6420-4687-8c80-9a21c64f8d9a" message='#["\n CONTACT ID : " ++ vars.contactId]'/>
+		<choice doc:name="Choice" doc:id="1296be0c-2407-4801-91eb-41546af7740c">
+			<when expression="#[payload != vars.hashedData]">
+				<os:store doc:name="Store" doc:id="a2d5613f-13dc-4de0-8dfe-b5b88e8f4c4f" key="#[vars.contactId]" objectStore="Contact_Object_store">
+					<os:value><![CDATA[#[vars.hashedData]]]></os:value>
+				</os:store>
+				<logger level="INFO" doc:name="Logger" doc:id="3c90d6f7-9331-4c9b-9c7d-87619728d08c" message='#["\nKEY UPDATED"]'/>
+				<set-payload value='#["\nKEY UPDATED"]' doc:name="Set Payload" doc:id="a18a14fb-24fc-4e8b-bee5-e46559c561a3" />
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logger" doc:id="7c684f4d-bd2a-421b-9067-25d8cb3e301c" message='#["\nNO CHANGE"]'/>
+				<set-payload value='#["\nNO CHANGE"]' doc:name="Set Payload" doc:id="11271e32-8a23-4dad-b377-8c9f5542cf46" />
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="4cf48da1-f119-4ccf-94cd-4c8c2b830eb2" type="OS:KEY_NOT_FOUND">
+				<logger level="INFO" doc:name="Logger" doc:id="60c2261d-b60e-4311-ab7e-9d8e19f2c641" message='#["\nNEW KEY"]'/>
+				<os:store doc:name="Store" doc:id="7344bb50-1b2b-4204-974d-3424c56cf31d" key="#[vars.contactId]" objectStore="Contact_Object_store">
+					<os:value ><![CDATA[#[vars.hashedData]]]></os:value>
+				</os:store>
+				<set-payload value='#["\nNEW KEY"]' doc:name="Set Payload" doc:id="1fb2f888-5726-4ddb-a7f8-842af7055f7b" />
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="tester-apiFlow3" doc:id="888c6f16-a668-4a48-8602-e7a982c28f18" >
+		<http:listener doc:name="Listener" doc:id="76c0299f-2e09-4494-b855-54166102cbcb" config-ref="HTTP_Listener_config" path="/idempotent"/>
+		<ee:transform doc:name="Copy_of_Transform Message" doc:id="0c48921c-476c-4ffe-9c78-00cccfb1a431">
+			<ee:message >
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="hashedData"><![CDATA[%dw 2.0
+import dw::Crypto
+output application/json
+---
+Crypto::hashWith(write(payload - "timeStamp", "application/json"),"MD5")]]></ee:set-variable>
+				<ee:set-variable variableName="oriPayload"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<try doc:name="Try" doc:id="6444d69f-12fd-4522-94d2-d096ace0e141" >
+			<idempotent-message-validator doc:name="Idempotent Message Validator" doc:id="8cd557ce-6e7e-4030-85b0-6cfcea0d4edc" idExpression="#[vars.hashedData]" valueExpression='#[write((payload - "timeStamp"), "application/json")]' objectStore="Object_store"/>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="54b26c35-e851-42f5-b721-648a54b482cf" type="ANY">
+					<logger level="INFO" doc:name="Logger" doc:id="fab03a1c-ce0f-4a44-92cd-5e33553442e8" message='#["\nDUPLICATE Message"]' />
+					<set-payload value='#["\nDUPLICATE"]' doc:name="Set Payload" doc:id="a2a30839-922c-4c77-abe5-e9e61541b061" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<logger level="INFO" doc:name="Logger" doc:id="204abdbc-1d67-41d0-b7db-47366bcda7c7" message='#["Done "]' />
+		<logger level="INFO" doc:name="Logger" doc:id="46a8bf01-27b5-45a3-beb1-0843e2b5467e" message="#[payload]"/>
+		<set-payload value='#["\nDONE"]' doc:name="Set Payload" doc:id="f918bc62-de4d-44c1-a842-a7d50776f987" />
+	</flow>
+	<flow name="tester-apiFlow1" doc:id="ed2fabfd-b2b0-44f2-8208-3db7d9ef343d" >
+		<http:listener doc:name="Listener" doc:id="3ec28067-89c6-42e8-b914-a13f1ce45895" config-ref="HTTP_Listener_config" path="/test"/>
+		<logger level="INFO" doc:name="Logger" doc:id="6e5596ce-a70b-4810-a5f9-e927c4a73f1f" message="#[payload]"/>
+	</flow>
+</mule>
